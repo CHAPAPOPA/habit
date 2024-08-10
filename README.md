@@ -29,6 +29,12 @@
 - Реализована периодическая задача *send_reminder* в Celery с использованием celery-beat для напоминания о том, в какое время какие привычки необходимо выполнять.
 - Настроен CORS.
 
+- Описаны Dockerfile и docker-compose.yaml.
+- Docker Compose используется для управления контейнерами.
+- Для сервисов django, postgresql, redis, celery созданы отдельные контейнеры.
+
+- Проект готов быть размещенным на удаленном сервере.
+
 ## Установка и запуск
 
 ### Склонируйте репозиторий:
@@ -67,22 +73,140 @@ python manage.py migrate
 ```
 
 ### Запуск приложения
-Для того чтобы запустить проект, выполните команду
-   ```sh
-   python3 manage.py runserver
-   ```
-Работу каждого эндпоинта необходимо проверять с помощью Postman.
+1. Для запуска проекта выполните команду
+```sh
+python3 manage.py runserver
+```
+2. Работу каждого эндпоинта можно проверять с помощью Postman.
+
+### Запуск приложения в Docker
+Для сборки образа и запуска контейнера, выполните команду
+```sh
+docker-compose up -d --build
+```
 
 ### Запуск задач в Celery
 В проекте реализованы отложенные и периодические задачи.
-Для запуска **периодической задачи**, выполните команды
+Для запуска **периодической задачи**, выполните команды:
 ```sh
-   celery -A config  worker --loglevel=info
-   ```
+celery -A config  worker --loglevel=info
+```
 и
 ```sh
-    celery -A config beat -l INFO -S django
-   ```
+celery -A config beat -l INFO -S django
+```
+
+## Деплой
+
+_____
+### Деплой приложения на удалённый сервер в ручном режиме.
+1. Установите зависимости на удалённый сервер
+```sh
+sudo apt-get update
+sudo apt-get install postgresql postgresql-contrib python3-pip
+apt install gunicorn
+apt install nginx
+```
+
+2. Установите виртуальное окружение на удалённом сервере
+```sh
+python3 -m venv venv
+```
+
+3. Активируйте виртуальное окружение
+```sh
+source venv/bin/activate
+```
+
+4. Клонируйте свой проект на сервер
+```sh
+git clone <ssh вашего проекта с гит>
+```
+
+5. Установите зависимости проекта
+```sh
+poetry install
+```
+
+6. Опишите настройки для демона gunicorn на удаленном сервере в файле /etc/systemd/system/yourproject.service
+```sh
+   [Unit]
+   Description=gunicorn daemon for Your Project # Описание вашего сервиса
+   After=network.target # Сервис, от которого будет зависеть запуск проекта
+    
+   [Service]
+   User=yourusername # Имя пользователя владельца проекта в Linux
+   Group=yourgroupname # Группа, к которой относится пользователь
+   WorkingDirectory=/path/to/your/project # Путь к рабочей директории проекта
+   ExecStart=/path/to/venv/bin/gunicorn --config /path/to/gunicorn_config.py your_project.wsgi:application # Команда для запуска проекта
+    
+    [Install]
+    WantedBy=multi-user.target
+```
+
+7. Запустите сервис
+```sh
+sudo systemctl start yourproject
+```
+
+8. Опишите настройки для Nginx для работы со статикой вашего проекта в файле /etc/nginx/sites-available/yourproject
+```sh
+   server {
+    listen 80;
+    server_name <ip адрес или доменное имя сервера>;
+
+    location /static/ {
+			root /path/to/your/project/;
+    }
+
+    location /media/ {
+			root /path/to/your/project/;
+    }
+
+    location / {
+			include proxy_params;
+			proxy_pass /path/to/your/project/project.sock
+    }
+
+}
+```
+
+9. Проверьте корректность заполнения файла с помощью утилиты `nginx -t`
+
+10. Подключите сайт к отображению
+```sh
+ln -s /etc/nginx/sites-available/my_site /etc/nginx/sites-enabled
+```
+
+11. Выполнить команду для определения статики проекта
+```sh
+python3 manage.py collectstatic
+```
+
+_____
+### Деплой приложения на удалённый сервер череез Docker.
+1. Выполнить шаги 1, 3, 5, 6, 7, 8
+
+2. Установить docker и docker-compose на удаленный сервер
+```sh
+apt install docker docker-compose
+```
+
+3Для сборки образа и запуска контейнера, выполните команду
+```sh
+docker compose up -d --build
+```
+
+_____
+### Подключение CI/CD.
+1. Загрузите в GitLab свой проект следуя инструкциям GitLab
+2. В разделе settings -> CI/CD -> Runners создайте runner
+3. В разделе settings -> CI/CD -> Variables добавьте переменные окружения для .env файла
+4. Установите GitLab Runner на удаленном сервере
+```sh
+curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh" | sudo bash
+sudo apt-get install gitlab-runner
+```
 
 ---
 
